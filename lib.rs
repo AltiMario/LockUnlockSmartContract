@@ -2,7 +2,7 @@
 
 #[ink::contract]
 mod lock_unlock_smart_contract {
-    use ink::env::{ pay::Transfer, DefaultEnvironment };
+    use ink::prelude::string::String;
 
     #[ink(storage)]
     pub struct LockUnlockSmartContract {
@@ -24,13 +24,19 @@ mod lock_unlock_smart_contract {
         amount: Balance,
     }
 
-    impl LockUnlockSmartContract {
-        #[ink(constructor)]
-        pub fn new() -> Self {
+    impl Default for LockUnlockSmartContract {
+        fn default() -> Self {
             Self {
                 locker: None,
                 locked_amount: 0,
             }
+        }
+    }
+
+    impl LockUnlockSmartContract {
+        #[ink(constructor)]
+        pub fn new() -> Self {
+            Self::default()
         }
 
         #[ink(message, payable)]
@@ -44,10 +50,7 @@ mod lock_unlock_smart_contract {
             self.locker = Some(caller);
             self.locked_amount = transferred;
 
-            self.env().emit_event(Locked {
-                locker: caller,
-                amount: transferred,
-            });
+            self.emit_locked_event(caller, transferred);
         }
 
         #[ink(message)]
@@ -62,14 +65,27 @@ mod lock_unlock_smart_contract {
 
             // Transfer locked assets back
             let amount = self.locked_amount;
-            self.env().transfer(caller, amount).expect("Transfer failed");
+            self.env().transfer(caller, amount).unwrap_or_else(|error| {
+                panic!("Transfer failed: {:?}", error);
+            });
 
             // Reset contract state
             self.locker = None;
             self.locked_amount = 0;
 
+            self.emit_redeemed_event(caller, amount);
+        }
+
+        fn emit_locked_event(&self, locker: AccountId, amount: Balance) {
+            self.env().emit_event(Locked {
+                locker,
+                amount,
+            });
+        }
+
+        fn emit_redeemed_event(&self, locker: AccountId, amount: Balance) {
             self.env().emit_event(Redeemed {
-                locker: caller,
+                locker,
                 amount,
             });
         }
